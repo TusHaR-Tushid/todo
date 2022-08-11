@@ -39,12 +39,6 @@ type UsersTodo struct {
 	ArchivedAt  time.Time `json:"archivedAt"  db:"archived_at"`
 }
 
-type Session struct {
-	ID        string    `json:"id"`
-	UserId    int       `json:"userId"`
-	ExpiresAt time.Time `json:"expiresAt"`
-}
-
 type UsersLoginDetails struct {
 	Id       int    `json:"id"`
 	Name     string `json:"name"`

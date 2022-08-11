@@ -52,17 +52,22 @@ func Middleware(next http.Handler) http.Handler {
 
 func Register(w http.ResponseWriter, r *http.Request) {
 	var userDetails models.Users
-	var todoDetails models.Todo
+
 	err := json.NewDecoder(r.Body).Decode(&userDetails)
 	if err != nil {
 		log.Printf("decoder error %v", err)
+		return
 	}
 	idFromUser, err1 := helper.CreateUser(userDetails)
 	if err1 != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	todoDetails.CreatedBy = idFromUser
+	err = json.NewEncoder(w).Encode(idFromUser)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
 
 }
 
@@ -178,7 +183,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userCredentials, checkErr := helper.CheckPassword(userDetails.Email)
+	userCredentials, checkErr := helper.FetchPassword(userDetails.Email)
 	if checkErr != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -217,13 +222,8 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	}
 	_, err = w.Write([]byte(tokenString))
 	if err != nil {
-		return
-	}
-	//Finally, we set the client cookie for "sessions_token" as the session token we just generated
-	//We also set an expiry time of 120 sec
-
-	if err != nil {
 		log.Printf("encoder error %v", err)
+		return
 	}
 
 }

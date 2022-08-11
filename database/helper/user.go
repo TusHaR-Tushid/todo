@@ -6,7 +6,7 @@ import (
 	"log"
 )
 
-func CheckPassword(userMail string) (models.UserCredentials, error) {
+func FetchPassword(userMail string) (models.UserCredentials, error) {
 	SQL := `SELECT id, password
           FROM   users
           WHERE  email =$1`
