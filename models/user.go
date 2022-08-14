@@ -20,6 +20,7 @@ type Todo struct {
 	Description string    `json:"description"`
 	ExpiringAt  time.Time `json:"expiringAt"`
 	IsCompleted bool      `json:"isCompleted"`
+	IsActive    bool      `json:"isActive"`
 }
 
 type UsersTodo struct {
@@ -37,6 +38,7 @@ type UsersTodo struct {
 	ExpiringAt  time.Time `json:"expiringAt" db:"expiring_at"`
 	IsCompleted bool      `json:"isCompleted"  db:"is_completed"`
 	ArchivedAt  time.Time `json:"archivedAt"  db:"archived_at"`
+	IsActive    bool      `json:"isActive" db:"is_active"`
 }
 
 type UsersLoginDetails struct {

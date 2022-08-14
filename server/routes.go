@@ -19,12 +19,17 @@ func SetupRoutes() *Server {
 		todo.Route("/home", func(api chi.Router) {
 			api.Use(handler.Middleware)
 			api.Post("/todo", handler.CreateTodo)
-			api.Get("/all-todo", handler.GetAll)
+			api.Get("/all-todo", handler.GetAllTodo)
 			api.Get("/completed-todo", handler.GetCompleted)
 			api.Get("/upcoming-todo", handler.GetUpcoming)
 			api.Get("/expired-todo", handler.GetExpired)
-			api.Put("/update-todo", handler.UpdateTodo)
-			api.Delete("/delete-todo", handler.DeleteTodo)
+
+			// URL param
+			api.Route("/{ID}", func(changes chi.Router) {
+
+				changes.Put("/update-todo", handler.UpdateTodo)
+				changes.Delete("/delete-todo", handler.DeleteTodo)
+			})
 		})
 
 	})

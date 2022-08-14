@@ -5,11 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/dgrijalva/jwt-go"
-
+	"github.com/go-chi/chi/v5"
 	"go-todo/database/helper"
 	"go-todo/models"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -34,9 +35,9 @@ func Middleware(next http.Handler) http.Handler {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		userId := claims.Id
+		userID := claims.Id
 
-		r = r.WithContext(context.WithValue(r.Context(), "userId", userId))
+		r = r.WithContext(context.WithValue(r.Context(), "userID", userID))
 
 		if !tkn.Valid {
 			w.WriteHeader(http.StatusUnauthorized)
@@ -72,7 +73,8 @@ func Register(w http.ResponseWriter, r *http.Request) {
 }
 
 func CreateTodo(w http.ResponseWriter, r *http.Request) {
-	userId, ok := r.Context().Value("userId").(int)
+
+	userID, ok := r.Context().Value("userID").(int)
 	if !ok {
 		return
 	}
@@ -84,7 +86,7 @@ func CreateTodo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err1 := helper.CreateTodo(todoDetails, userId)
+	err1 := helper.CreateTodo(todoDetails, userID)
 	if err1 != nil {
 		log.Printf("CretewTodoErrror : %v", err1)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -93,13 +95,35 @@ func CreateTodo(w http.ResponseWriter, r *http.Request) {
 
 }
 
-func GetAll(w http.ResponseWriter, r *http.Request) {
-	todos, todoErr := helper.GetAll()
+func GetAllTodo(w http.ResponseWriter, r *http.Request) {
+	var isStatus bool
+	var isActive bool
+	userID, ok := r.Context().Value("userID").(int)
+	if !ok {
+		return
+	}
+	status := r.URL.Query().Get("status")
+	page, err := strconv.Atoi(r.URL.Query().Get("page"))
+	if err != nil {
+		log.Printf("err is :%v", err)
+	}
+	limit, err := strconv.Atoi(r.URL.Query().Get("limit"))
+	if err != nil {
+		log.Printf("err is :%v", err)
+	}
+	if status == "active" {
+		isStatus = true
+		isActive = true
+	} else if status == "draft" {
+		isStatus = true
+		isActive = false
+	}
+	todos, todoErr := helper.GetAllTodo(isStatus, isActive, userID, page, limit)
 	if todoErr != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	err := json.NewEncoder(w).Encode(todos)
+	err = json.NewEncoder(w).Encode(todos)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -146,28 +170,35 @@ func GetExpired(w http.ResponseWriter, r *http.Request) {
 }
 
 func UpdateTodo(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(chi.URLParam(r, "ID"))
+	if err != nil {
+		log.Printf("parsing error :%v", err)
+	}
 	var usersTodo models.Todo
-	err := json.NewDecoder(r.Body).Decode(&usersTodo)
+	err = json.NewDecoder(r.Body).Decode(&usersTodo)
 	if err != nil {
 		log.Printf("decoder error %v", err)
 		return
 	}
-	updatedTodo := helper.UpdateTodo(usersTodo)
+
+	updatedTodo := helper.UpdateTodo(id, usersTodo)
 	if updatedTodo != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
+
 }
 
 func DeleteTodo(w http.ResponseWriter, r *http.Request) {
-	var usersTodo models.Todo
-	err := json.NewDecoder(r.Body).Decode(&usersTodo)
+	//userID, ok := r.Context().Value("userID").(int)
+	//if !ok {
+	//	return
+	//}
+	id, err := strconv.Atoi(chi.URLParam(r, "id"))
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		log.Printf("decoder error %v", err)
-		return
+		log.Printf("parsing error :%v", err)
 	}
-	todoErr := helper.DeleteTodo(usersTodo.CreatedBy)
+	todoErr := helper.DeleteTodo(id)
 	if todoErr != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
