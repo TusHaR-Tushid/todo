@@ -20,9 +20,9 @@ func SetupRoutes() *Server {
 			api.Use(handler.Middleware)
 			api.Post("/todo", handler.CreateTodo)
 			api.Get("/all-todo", handler.GetAllTodo)
-			api.Get("/completed-todo", handler.GetCompleted)
-			api.Get("/upcoming-todo", handler.GetUpcoming)
-			api.Get("/expired-todo", handler.GetExpired)
+			//api.Get("/completed-todo", handler.GetCompletedTodo)
+			api.Get("/upcoming-todo", handler.GetUpcomingTodo)
+			api.Get("/expired-todo", handler.GetExpiredTodo)
 
 			// URL param
 			api.Route("/{ID}", func(changes chi.Router) {

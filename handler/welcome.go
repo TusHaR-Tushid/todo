@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"github.com/dgrijalva/jwt-go"
@@ -98,6 +99,13 @@ func CreateTodo(w http.ResponseWriter, r *http.Request) {
 func GetAllTodo(w http.ResponseWriter, r *http.Request) {
 	var isStatus bool
 	var isActive bool
+	// implementing isCompleted
+	isCompleted := false
+	statusIsCompleted := r.URL.Query().Get("isCompleted")
+	if statusIsCompleted == "true" {
+		isCompleted = true
+	}
+	// implemented isCompleted
 	userID, ok := r.Context().Value("userID").(int)
 	if !ok {
 		return
@@ -106,10 +114,12 @@ func GetAllTodo(w http.ResponseWriter, r *http.Request) {
 	page, err := strconv.Atoi(r.URL.Query().Get("page"))
 	if err != nil {
 		log.Printf("err is :%v", err)
+		return
 	}
 	limit, err := strconv.Atoi(r.URL.Query().Get("limit"))
 	if err != nil {
 		log.Printf("err is :%v", err)
+		return
 	}
 	if status == "active" {
 		isStatus = true
@@ -118,7 +128,7 @@ func GetAllTodo(w http.ResponseWriter, r *http.Request) {
 		isStatus = true
 		isActive = false
 	}
-	todos, todoErr := helper.GetAllTodo(isStatus, isActive, userID, page, limit)
+	todos, todoErr := helper.GetAllTodo(isCompleted, isStatus, isActive, userID, page, limit)
 	if todoErr != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -130,8 +140,25 @@ func GetAllTodo(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func GetCompleted(w http.ResponseWriter, r *http.Request) {
-	todos, todoErr := helper.GetCompleted()
+//func GetCompletedTodo(w http.ResponseWriter, r *http.Request) {
+//	todos, todoErr := helper.GetCompleted()
+//	if todoErr != nil {
+//		w.WriteHeader(http.StatusInternalServerError)
+//		return
+//	}
+//	err := json.NewEncoder(w).Encode(todos)
+//	if err != nil {
+//		w.WriteHeader(http.StatusInternalServerError)
+//		return
+//	}
+//}
+
+func GetUpcomingTodo(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value("userID").(int)
+	if !ok {
+		return
+	}
+	todos, todoErr := helper.GetUpcoming(userID)
 	if todoErr != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -143,21 +170,12 @@ func GetCompleted(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func GetUpcoming(w http.ResponseWriter, r *http.Request) {
-	todos, todoErr := helper.GetUpcoming()
-	if todoErr != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+func GetExpiredTodo(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value("userID").(int)
+	if !ok {
 		return
 	}
-	err := json.NewEncoder(w).Encode(todos)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-}
-
-func GetExpired(w http.ResponseWriter, r *http.Request) {
-	todos, todoErr := helper.GetExpired()
+	todos, todoErr := helper.GetExpired(userID)
 	if todoErr != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -173,6 +191,7 @@ func UpdateTodo(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(chi.URLParam(r, "ID"))
 	if err != nil {
 		log.Printf("parsing error :%v", err)
+		return
 	}
 	var usersTodo models.Todo
 	err = json.NewDecoder(r.Body).Decode(&usersTodo)
@@ -197,6 +216,7 @@ func DeleteTodo(w http.ResponseWriter, r *http.Request) {
 	id, err := strconv.Atoi(chi.URLParam(r, "id"))
 	if err != nil {
 		log.Printf("parsing error :%v", err)
+		return
 	}
 	todoErr := helper.DeleteTodo(id)
 	if todoErr != nil {
@@ -215,8 +235,8 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userCredentials, checkErr := helper.FetchPassword(userDetails.Email)
-	if checkErr != nil {
-		w.WriteHeader(http.StatusBadRequest)
+	if checkErr != nil && checkErr != sql.ErrNoRows {
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 	// get the expected password
