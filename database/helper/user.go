@@ -6,7 +6,7 @@ import (
 	"log"
 )
 
-func FetchPassword(userMail string) (models.UserCredentials, error) {
+func FetchPasswordAndId(userMail string) (models.UserCredentials, error) {
 	SQL := `SELECT id, password
           FROM   users
           WHERE  email =$1`
@@ -14,6 +14,7 @@ func FetchPassword(userMail string) (models.UserCredentials, error) {
 	var userCredentials models.UserCredentials
 	err := database.UserTodoDb.Get(&userCredentials, SQL, userMail)
 	if err != nil {
+		log.Printf("FetchPassword:%v", err)
 		return userCredentials, err
 	}
 	return userCredentials, nil
@@ -26,12 +27,13 @@ func CreateUser(userDetails models.Users) (int, error) {
 	var id int
 	err := database.UserTodoDb.Get(&id, SQL, userDetails.Name, userDetails.Email, userDetails.Password, userDetails.Age, userDetails.Gender, userDetails.Address)
 	if err != nil {
+		log.Printf("CreateUser:%v", err)
 		return id, err
 	}
 	return id, nil
 }
 
-func CreateTodo(todoDetails models.Todo, userID int) error {
+func CreateTodo(todoDetails models.TodoInput, userID int) error {
 	SQL := `INSERT INTO todo(created_by,title, description, expiring_at)
           VALUES($1,$2,$3,$4)`
 	_, err := database.UserTodoDb.Exec(SQL, userID, todoDetails.Title, todoDetails.Description, todoDetails.ExpiringAt)
@@ -42,26 +44,27 @@ func CreateTodo(todoDetails models.Todo, userID int) error {
 	return nil
 }
 
-func GetAllTodo(isCompleted, isStatus, isActive bool, userID, page, limit int) ([]models.UsersTodo, error) {
-
-	SQL := `SELECT users.id,   
-                   name,
+func GetAllTodo(isCompleted, isStatus, isActive, isSearched bool, searchedName string, userID, page, limit int) ([]models.UsersTodoList, error) {
+	//language=sql
+	SQL := `SELECT 
+                   id,
                    title,    
                    description,
-                   todo.created_at,
+                   created_by,
+                   created_at,
                    expiring_at,
-                   is_completed
-          FROM users
-          JOIN todo ON users.id = todo.created_by
-          WHERE archived_at IS NULL
+                   is_completed,
+                   is_active
+          FROM todo
+          WHERE created_by=$6
           AND ($1 OR is_active=$2)
-          AND is_completed=$3
-          AND  users.id=$4
-          ORDER BY users.id
-          LIMIT  $5
-          OFFSET $6`
-	todoSlice := make([]models.UsersTodo, 0)
-	err := database.UserTodoDb.Select(&todoSlice, SQL, !isStatus, isActive, isCompleted, userID, limit, limit*page)
+          AND ($3 or title ilike '%' || $4 || '%')
+          AND is_completed=$5
+          ORDER BY (title)
+          LIMIT  $7
+          OFFSET $8`
+	todoSlice := make([]models.UsersTodoList, 0)
+	err := database.UserTodoDb.Select(&todoSlice, SQL, !isStatus, isActive, !isSearched, searchedName, isCompleted, userID, limit, limit*page)
 	if err != nil {
 		log.Printf("GetAllTodo:uable to get todo %v", err)
 		return nil, err
@@ -92,6 +95,7 @@ func GetCompleted() ([]models.UsersTodo, error) {
 	}
 	return todoSlice, nil
 }
+
 func GetUpcoming(userID int) ([]models.UsersTodo, error) {
 	SQL := `SELECT   users.id, 
                    name,
@@ -156,6 +160,21 @@ func UpdateTodo(id int, todoVar models.Todo) error {
 	}
 	return nil
 }
+
+func MarkCompleted(id int, todoVar models.Todo) error {
+	SQL := `UPDATE todo
+           SET    is_completed=$1
+           WHERE  id=$2`
+
+	_, err := database.UserTodoDb.Exec(SQL, todoVar.IsCompleted, id)
+	if err != nil {
+		log.Printf("MarkCompleted: cannot marke todo as completed:%v", err)
+		return err
+	}
+	return nil
+
+}
+
 func DeleteTodo(id int) error {
 	SQL := `UPDATE users
           SET    archived_at=now()

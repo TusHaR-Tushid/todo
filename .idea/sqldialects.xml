@@ -11,6 +11,8 @@
     <file url="file://$PROJECT_DIR$/database/migrations/0008_create_user_todo_session.up.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/database/migrations/0009_draft.up.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/database/migrations/0010_draft.down.sql" dialect="PostgreSQL" />
+    <file url="file://$PROJECT_DIR$/database/migrations/0011_user_email_unique.up.sql" dialect="PostgreSQL" />
+    <file url="file://$PROJECT_DIR$/database/migrations/0012_empty_email.up.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/database/migrations/003_credentials.up.sql" dialect="PostgreSQL" />
   </component>
 </project>

@@ -27,8 +27,9 @@ func SetupRoutes() *Server {
 			// URL param
 			api.Route("/{ID}", func(changes chi.Router) {
 
-				changes.Put("/update-todo", handler.UpdateTodo)
-				changes.Delete("/delete-todo", handler.DeleteTodo)
+				changes.Put("/", handler.UpdateTodo)
+				changes.Put("/mark-completed", handler.MarkCompleted)
+				changes.Delete("/", handler.DeleteTodo)
 			})
 		})
 
