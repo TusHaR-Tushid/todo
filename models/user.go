@@ -22,6 +22,15 @@ type Todo struct {
 	IsCompleted bool      `json:"isCompleted"`
 	IsActive    bool      `json:"isActive"`
 }
+type ConditionCheck struct {
+	IsActive     bool
+	IsStatus     bool
+	IsSearched   bool
+	IsCompleted  bool
+	Page         int
+	Limit        int
+	SearchedName string
+}
 
 type TodoInput struct {
 	Title       string    `json:"title"`

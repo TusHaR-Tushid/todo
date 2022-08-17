@@ -1,4 +1,4 @@
 drop table todo;
-drop table session;
+drop table sessions;
 drop table users;
 

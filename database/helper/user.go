@@ -3,15 +3,20 @@ package helper
 import (
 	"go-todo/database"
 	"go-todo/models"
+	"golang.org/x/crypto/bcrypt"
 	"log"
+	"strings"
 )
 
 func FetchPasswordAndId(userMail string) (models.UserCredentials, error) {
+
 	SQL := `SELECT id, password
           FROM   users
-          WHERE  email =$1`
+          WHERE  email =$1
+          AND   archived_at IS NULL`
 
 	var userCredentials models.UserCredentials
+
 	err := database.UserTodoDb.Get(&userCredentials, SQL, userMail)
 	if err != nil {
 		log.Printf("FetchPassword:%v", err)
@@ -21,11 +26,19 @@ func FetchPasswordAndId(userMail string) (models.UserCredentials, error) {
 }
 
 func CreateUser(userDetails models.Users) (int, error) {
-	SQL := `INSERT INTO users(name,email,password,age,gender,address)
+	hash, err := bcrypt.GenerateFromPassword([]byte(userDetails.Password), bcrypt.DefaultCost)
+	if err != nil {
+
+		log.Printf("CreateUser: error is:%v", err)
+	}
+	//language=SQL
+	SQL := `INSERT INTO users(name, email,password,age,gender,address)
           VALUES($1,$2,$3,$4,$5,$6)
           RETURNING id`
 	var id int
-	err := database.UserTodoDb.Get(&id, SQL, userDetails.Name, userDetails.Email, userDetails.Password, userDetails.Age, userDetails.Gender, userDetails.Address)
+	userDetails.Email = strings.ToLower(userDetails.Email)
+
+	err = database.UserTodoDb.Get(&id, SQL, userDetails.Name, userDetails.Email, hash, userDetails.Age, userDetails.Gender, userDetails.Address)
 	if err != nil {
 		log.Printf("CreateUser:%v", err)
 		return id, err
@@ -44,7 +57,7 @@ func CreateTodo(todoDetails models.TodoInput, userID int) error {
 	return nil
 }
 
-func GetAllTodo(isCompleted, isStatus, isActive, isSearched bool, searchedName string, userID, page, limit int) ([]models.UsersTodoList, error) {
+func GetAllTodo(conditionCheck models.ConditionCheck, userID int) ([]models.UsersTodoList, error) {
 	//language=sql
 	SQL := `SELECT 
                    id,
@@ -60,11 +73,11 @@ func GetAllTodo(isCompleted, isStatus, isActive, isSearched bool, searchedName s
           AND ($1 OR is_active=$2)
           AND ($3 or title ilike '%' || $4 || '%')
           AND is_completed=$5
-          ORDER BY (title)
+          ORDER BY title
           LIMIT  $7
           OFFSET $8`
 	todoSlice := make([]models.UsersTodoList, 0)
-	err := database.UserTodoDb.Select(&todoSlice, SQL, !isStatus, isActive, !isSearched, searchedName, isCompleted, userID, limit, limit*page)
+	err := database.UserTodoDb.Select(&todoSlice, SQL, !conditionCheck.IsStatus, conditionCheck.IsActive, !conditionCheck.IsSearched, conditionCheck.SearchedName, conditionCheck.IsCompleted, userID, conditionCheck.Limit, conditionCheck.Limit*conditionCheck.Page)
 	if err != nil {
 		log.Printf("GetAllTodo:uable to get todo %v", err)
 		return nil, err

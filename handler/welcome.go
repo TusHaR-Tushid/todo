@@ -4,14 +4,15 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"fmt"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/go-chi/chi/v5"
 	"go-todo/database/helper"
 	"go-todo/models"
+	"golang.org/x/crypto/bcrypt"
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -19,7 +20,7 @@ var jwtKey = []byte("secret_key")
 
 func Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
+		//todo read about middleware
 		token := r.Header.Get("token")
 
 		claims := models.Claim{}
@@ -46,14 +47,6 @@ func Middleware(next http.Handler) http.Handler {
 
 		r = r.WithContext(context.WithValue(r.Context(), "userID", userID))
 
-		_, err := w.Write([]byte(fmt.Sprintf("Hello,%s", claims.Issuer)))
-		if err != nil {
-			//statuscode
-			w.WriteHeader(http.StatusInternalServerError)
-			//error
-			log.Printf("Write error:%v", err)
-			return
-		}
 		next.ServeHTTP(w, r)
 	})
 }
@@ -67,6 +60,9 @@ func Register(w http.ResponseWriter, r *http.Request) {
 		log.Printf("decoder error %v", err)
 		return
 	}
+
+	//todo encrypt password in golang using bcrypt
+
 	idFromUser, err1 := helper.CreateUser(userDetails)
 	if err1 != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -105,10 +101,11 @@ func CreateTodo(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-
+	//todo sucsess ?
 }
 
-func GetAllTodo(w http.ResponseWriter, r *http.Request) {
+func Conditions(r *http.Request) (models.ConditionCheck, error) {
+	conditionCheck := models.ConditionCheck{}
 	var isStatus bool
 	var isActive bool
 	isSearched := false
@@ -119,41 +116,61 @@ func GetAllTodo(w http.ResponseWriter, r *http.Request) {
 		isSearched = true
 	}
 	statusIsCompleted := r.URL.Query().Get("isCompleted")
+	//todo parse bool
 	if statusIsCompleted == "true" {
 		isCompleted = true
 	}
 	// implemented isCompleted
-	userID, ok := r.Context().Value("userID").(int)
-	if !ok {
-		w.WriteHeader(http.StatusBadRequest)
-		log.Printf("GetAllTodo:QueryParam for userID:%v", ok)
-		return
-	}
 
+	//todo check if status is valid
 	status := r.URL.Query().Get("status")
 	page, err := strconv.Atoi(r.URL.Query().Get("page"))
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
 		log.Printf("Page:err is :%v", err)
-		return
+		return conditionCheck, err
 	}
 
 	limit, err := strconv.Atoi(r.URL.Query().Get("limit"))
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
+
 		log.Printf("Limit:err is :%v", err)
-		return
+		return conditionCheck, err
 	}
 
 	if status == "active" {
 		isStatus = true
-		isActive = true
+		conditionCheck.IsActive = true
 	} else if status == "draft" {
 		isStatus = true
 		isActive = false
 	}
+	conditionCheck = models.ConditionCheck{IsActive: isActive,
+		IsStatus:     isStatus,
+		IsSearched:   isSearched,
+		IsCompleted:  isCompleted,
+		Page:         page,
+		Limit:        limit,
+		SearchedName: searchedName}
 
-	todos, todoErr := helper.GetAllTodo(isCompleted, isStatus, isActive, isSearched, searchedName, userID, page, limit)
+	return conditionCheck, nil
+}
+
+func GetAllTodo(w http.ResponseWriter, r *http.Request) {
+
+	conditionCheck, err := Conditions(r)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		log.Printf("GetAllTodo:conditionCheck error:%v", err)
+		return
+
+	}
+	userID, ok := r.Context().Value("userID").(int)
+	if !ok {
+
+		log.Printf("GetAllTodo:QueryParam for userID:%v", ok)
+		return
+	}
+	todos, todoErr := helper.GetAllTodo(conditionCheck, userID)
 	if todoErr != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Printf("GetAllTodo:error is:%v", todoErr)
@@ -182,6 +199,7 @@ func GetAllTodo(w http.ResponseWriter, r *http.Request) {
 //}
 
 func GetUpcomingTodo(w http.ResponseWriter, r *http.Request) {
+
 	userID, ok := r.Context().Value("userID").(int)
 	if !ok {
 		w.WriteHeader(http.StatusBadRequest)
@@ -296,7 +314,6 @@ func DeleteTodo(w http.ResponseWriter, r *http.Request) {
 }
 
 func Login(w http.ResponseWriter, r *http.Request) {
-
 	var userDetails models.UsersLoginDetails
 	err := json.NewDecoder(r.Body).Decode(&userDetails)
 	if err != nil {
@@ -305,22 +322,38 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userDetails.Email = strings.ToLower(userDetails.Email)
+
 	userCredentials, checkErr := helper.FetchPasswordAndId(userDetails.Email)
-	if checkErr != nil && checkErr != sql.ErrNoRows {
-		w.WriteHeader(http.StatusInternalServerError)
-		log.Printf("FetchPassword:error is:%v", err)
+	if checkErr != nil {
+		if checkErr != sql.ErrNoRows {
+			w.WriteHeader(http.StatusInternalServerError)
+			log.Printf("FetchPassword:error is:%v", err)
+			return
+		}
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	// get the expected password
 
-	//If a password exists for the given UserCred
-	//And, if it is the same as the password we received, then we can move ahead
-	//if NOT, then we return an "Unauthorized" status
-	if userCredentials.Password != userDetails.Password {
+	if PasswordErr := bcrypt.CompareHashAndPassword([]byte(userCredentials.Password), []byte(userDetails.Password)); PasswordErr != nil {
+
+		// TODO: Properly handle error
 		w.WriteHeader(http.StatusUnauthorized)
 		log.Printf("password misMatch")
 		return
 	}
+
+	// get the expected password
+	//todo email case sensitive
+
+	//If a password exists for the given UserCred
+	//And, if it is the same as the password we received, then we can move ahead
+	//if NOT, then we return an "Unauthorized" status
+	//if userCredentials.Password != userDetails.Password {
+	//	w.WriteHeader(http.StatusUnauthorized)
+	//	log.Printf("password misMatch")
+	//	return
+	//}
 
 	expiresAt := time.Now().Add(60 * time.Minute)
 
@@ -345,7 +378,12 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		log.Printf("TokenString:cannot create token string:%v", err)
 		return
 	}
-	_, err = w.Write([]byte(tokenString))
+	//todo send token as token : tokenValue
+	userOutboundData := make(map[string]interface{})
+
+	userOutboundData["token"] = tokenString
+
+	err = json.NewEncoder(w).Encode(userOutboundData)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Printf("encoder error %v", err)
