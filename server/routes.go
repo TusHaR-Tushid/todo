@@ -12,21 +12,21 @@ type Server struct {
 
 func SetupRoutes() *Server {
 	router := chi.NewRouter()
-
 	router.Route("/todo", func(todo chi.Router) {
 		todo.Post("/register", handler.Register)
 		todo.Post("/sign-in", handler.Login)
 		todo.Route("/home", func(api chi.Router) {
 			api.Use(handler.Middleware)
+			api.Get("/ws", handler.WsEndpoint)
 			api.Post("/todo", handler.CreateTodo)
 			api.Get("/all-todo", handler.GetAllTodo)
 			//api.Get("/completed-todo", handler.GetCompletedTodo)
 			api.Get("/upcoming-todo", handler.GetUpcomingTodo)
 			api.Get("/expired-todo", handler.GetExpiredTodo)
+			api.Put("/log-out", handler.Logout)
 
 			// URL param
 			api.Route("/{ID}", func(changes chi.Router) {
-
 				changes.Put("/", handler.UpdateTodo)
 				changes.Put("/mark-completed", handler.MarkCompleted)
 				changes.Delete("/", handler.DeleteTodo)

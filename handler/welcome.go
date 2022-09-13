@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
+	"github.com/gorilla/websocket"
+	"github.com/sirupsen/logrus"
 	"go-todo/database/helper"
 	"go-todo/models"
 	"golang.org/x/crypto/bcrypt"
@@ -16,11 +19,21 @@ import (
 	"time"
 )
 
+var upgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+}
+
+var globalSessionID uuid.UUID
+
+var wsObjects = make(map[int][]*websocket.Conn)
+
+var globalWS *websocket.Conn
+
 var jwtKey = []byte("secret_key")
 
 func Middleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		//todo read about middleware
 		token := r.Header.Get("token")
 
 		claims := models.Claim{}
@@ -43,6 +56,13 @@ func Middleware(next http.Handler) http.Handler {
 			log.Printf("token is invalid")
 			return
 		}
+
+		_, err := helper.CheckSession(claims.Id)
+		if err != nil {
+			logrus.Printf("session expired:%v", err)
+			return
+		}
+
 		userID := claims.Id
 
 		r = r.WithContext(context.WithValue(r.Context(), "userID", userID))
@@ -79,7 +99,6 @@ func Register(w http.ResponseWriter, r *http.Request) {
 }
 
 func CreateTodo(w http.ResponseWriter, r *http.Request) {
-
 	userID, ok := r.Context().Value("userID").(int)
 	if !ok {
 		w.WriteHeader(http.StatusBadRequest)
@@ -95,13 +114,51 @@ func CreateTodo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err1 := helper.CreateTodo(todoDetails, userID)
+	err1 := helper.CreateTodo(&todoDetails, userID)
 	if err1 != nil {
 		log.Printf("CretewTodoErrror : %v", err1)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	//todo sucsess ?
+	funcName := "CreateTodo"
+	inter := models.WebSocket{
+		Inter: todoDetails,
+		Type:  funcName,
+	}
+
+	writer(wsObjects[userID], &inter)
+}
+
+func WsEndpoint(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value("userID").(int)
+	if !ok {
+
+		log.Printf("GetAllTodo:QueryParam for userID:%v", ok)
+		return
+	}
+
+	ws, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		logrus.Printf("WsEndPoint:cannot set up webSocket:%v", err)
+		return
+	}
+	logrus.Printf("Client Successfully Connected...")
+
+	wsObjects[userID] = append(wsObjects[userID], ws)
+}
+
+func writer(conn []*websocket.Conn, inter interface{}) {
+	for _, c := range conn {
+		err := c.WriteJSON(&inter)
+		if err != nil {
+			logrus.Printf("reader: cannot write into ws:%v", err)
+			return
+		}
+	}
+}
+
+func CloseConn(conn []*websocket.Conn, userID int) {
+	conn[userID].Close()
 }
 
 func Conditions(r *http.Request) (models.ConditionCheck, error) {
@@ -164,12 +221,14 @@ func GetAllTodo(w http.ResponseWriter, r *http.Request) {
 		return
 
 	}
+
 	userID, ok := r.Context().Value("userID").(int)
 	if !ok {
 
 		log.Printf("GetAllTodo:QueryParam for userID:%v", ok)
 		return
 	}
+
 	todos, todoErr := helper.GetAllTodo(conditionCheck, userID)
 	if todoErr != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -206,12 +265,14 @@ func GetUpcomingTodo(w http.ResponseWriter, r *http.Request) {
 		log.Printf("GetUpcomingTodo:UserId Query Param error:%v", ok)
 		return
 	}
+
 	todos, todoErr := helper.GetUpcoming(userID)
 	if todoErr != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		log.Printf("GetUpcoming:%v", todoErr)
 		return
 	}
+
 	err := json.NewEncoder(w).Encode(todos)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -244,6 +305,13 @@ func GetExpiredTodo(w http.ResponseWriter, r *http.Request) {
 }
 
 func UpdateTodo(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value("userID").(int)
+	if !ok {
+		w.WriteHeader(http.StatusBadRequest)
+		log.Printf("CreateTodo:QueryParam for userID:%v", ok)
+		return
+	}
+
 	id, err := strconv.Atoi(chi.URLParam(r, "ID"))
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -266,6 +334,12 @@ func UpdateTodo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	funcName := "UpdateTodo"
+	inter := models.WebSocket{
+		Inter: usersTodo,
+		Type:  funcName,
+	}
+	writer(wsObjects[userID], &inter)
 }
 
 func MarkCompleted(w http.ResponseWriter, r *http.Request) {
@@ -378,7 +452,16 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		log.Printf("TokenString:cannot create token string:%v", err)
 		return
 	}
-	//todo send token as token : tokenValue
+
+	sessionID, err := helper.CreateSession(claims)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		logrus.Printf("CreateSession: cannot create session:%v", err)
+		return
+	}
+
+	globalSessionID = sessionID
+
 	userOutboundData := make(map[string]interface{})
 
 	userOutboundData["token"] = tokenString
@@ -390,4 +473,23 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+}
+
+func Logout(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value("userID").(int)
+
+	if !ok {
+		w.WriteHeader(http.StatusInternalServerError)
+		logrus.Printf("Logout: QueryParam for ID:%v", ok)
+		return
+	}
+
+	err := helper.Logout(userID)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		logrus.Printf("Logout:unable to logout:%v", err)
+		return
+	}
+
+	CloseConn(wsObjects[userID], userID)
 }

@@ -32,6 +32,11 @@ type ConditionCheck struct {
 	SearchedName string
 }
 
+type WebSocket struct {
+	Inter interface{}
+	Type  string
+}
+
 type TodoInput struct {
 	Title       string    `json:"title"`
 	Description string    `json:"description"`
